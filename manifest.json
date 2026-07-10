@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "DCInside Deep Search",
+  "description": "디시인사이드 갤러리 검색 결과의 다음 검색범위를 사용자가 요청할 때만 따라가며 통합 표시합니다.",
+  "version": "0.1.0",
+  "permissions": ["activeTab", "storage", "sidePanel"],
+  "host_permissions": ["https://gall.dcinside.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "DCInside Deep Search"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://gall.dcinside.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/*.js"],
+      "matches": ["https://gall.dcinside.com/*"]
+    }
+  ]
+}

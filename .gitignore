@@ -1,0 +1,12 @@
+﻿.DS_Store
+Thumbs.db
+*.log
+node_modules/
+.env
+.env.*
+.superloopy/
+deploy/
+tests/
+tools/
+docs/
+package-lock.json

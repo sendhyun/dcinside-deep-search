@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DCInside Deep Search</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>DCInside Deep Search</h1>
+        <p id="siteStatus" class="muted">수집 시작을 누르면 현재 페이지를 먼저 확인합니다.</p>
+      </div>
+      <span id="statusBadge" class="badge">idle</span>
+    </header>
+
+    <section class="section">
+      <h2>검색 컨텍스트</h2>
+      <dl class="meta-grid">
+        <div><dt>갤러리</dt><dd id="galleryValue">unknown</dd></div>
+        <div><dt>검색어</dt><dd id="keywordValue">unknown</dd></div>
+        <div><dt>검색 타입</dt><dd id="searchTypeValue">unknown</dd></div>
+        <div><dt>시작 URL</dt><dd id="startUrlValue" class="mono">unknown</dd></div>
+      </dl>
+    </section>
+
+    <section class="section search-input-section">
+      <h2>수집할 검색어</h2>
+      <label class="filter-field">
+        <span>검색어</span>
+        <textarea id="keywordInput" rows="4" placeholder="검색어를 줄바꿈 또는 쉼표로 구분해서 입력"></textarea>
+      </label>
+      <p class="muted">갤러리 메인에서는 검색어를 입력해야 수집을 시작할 수 있습니다.</p>
+    </section>
+
+    <section class="section controls">
+      <button id="startBtn" class="primary" type="button">수집 시작</button>
+      <button id="stopBtn" type="button">중지</button>
+      <button id="clearBtn" type="button" title="사이드패널에 저장된 취합 목록과 최근 상태를 비웁니다.">목록 비우기</button>
+    </section>
+
+    <section class="section results-section">
+      <div class="section-head">
+        <h2>취합된 글 목록</h2>
+        <span id="visibleCount" class="muted">0개 표시</span>
+      </div>
+      <div id="resultsList" class="results-list" aria-live="polite"></div>
+    </section>
+
+    <section class="section">
+      <h2>진행 상태</h2>
+      <dl class="meta-grid">
+        <div><dt>단계</dt><dd id="stepValue">0</dd></div>
+        <div><dt>방문 URL</dt><dd id="visitedValue">0</dd></div>
+        <div><dt>결과</dt><dd id="resultCountValue">0</dd></div>
+        <div><dt>마지막 오류</dt><dd id="errorValue">없음</dd></div>
+        <div class="wide"><dt>마지막 요청</dt><dd id="lastRequestValue" class="mono">없음</dd></div>
+        <div class="wide"><dt>마지막 next</dt><dd id="lastNextValue" class="mono">없음</dd></div>
+      </dl>
+    </section>
+
+    <section class="section filters">
+      <h2>목록 필터</h2>
+      <label class="filter-field">
+        <span>제목</span>
+        <input id="titleFilter" type="search">
+      </label>
+      <label class="filter-field">
+        <span>작성자</span>
+        <input id="authorFilter" type="search">
+      </label>
+      <label class="filter-field">
+        <span>최소 추천 수</span>
+        <input id="recommendFilter" type="number" min="0">
+      </label>
+    </section>
+
+    <details class="section settings-details">
+      <summary>수집 설정</summary>
+      <div class="settings settings-body">
+        <label>최대 수집 글 수 <input id="maxResults" type="number" min="1" max="100"></label>
+        <label>요청 간격 ms <input id="requestDelayMs" type="number" min="300" step="100"></label>
+        <label class="setting-toggle" data-description="같은 글 번호나 URL이 여러 검색 범위에서 나오면 목록에 한 번만 표시합니다."><input id="dedupeResults" type="checkbox"> 중복 제거</label>
+        <label class="setting-toggle" data-description="불확실한 다음 링크 후보가 있어도 첫 후보를 따라갑니다. 페이지 구조가 바뀐 것 같으면 꺼두세요."><input id="allowUncertainNextUrl" type="checkbox"> 불확실한 다음 링크 자동 이동 허용</label>
+      </div>
+    </details>
+  </main>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
