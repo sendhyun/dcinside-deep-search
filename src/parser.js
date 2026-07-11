@@ -1,6 +1,7 @@
 import { ERROR_CODES, makeError } from './errors.js';
+import { parseDcinsideEntryUrl } from './dcinsideUrls.js';
 
-export const PARSER_VERSION = 'dcinside-observed-2026-07-08-v1';
+export const PARSER_VERSION = 'dcinside-observed-2026-07-11-v2';
 
 export const OBSERVED_RULES = Object.freeze({
   contextInputs: {
@@ -105,13 +106,17 @@ function extractContextFromDoc(doc, html, currentUrl) {
   };
 }
 
-function supportedListPath(currentUrl) {
-  try {
-    const { pathname } = new URL(currentUrl);
-    return pathname === '/board/lists/' || pathname === '/mgallery/board/lists/' ? pathname : '';
-  } catch {
-    return '';
-  }
+function entryError(entry) {
+  const messages = {
+    'invalid-url': '잘못된 URL입니다.',
+    'unsupported-scheme': 'HTTPS 디시인사이드 URL만 지원합니다.',
+    'credentials-not-allowed': '사용자 정보가 포함된 URL은 지원하지 않습니다.',
+    'unsupported-port': '기본 HTTPS 포트가 아닌 URL은 지원하지 않습니다.',
+    'unsupported-host': '지원하지 않는 디시인사이드 호스트입니다.',
+    'unsupported-path': '지원하지 않는 갤러리 경로입니다.',
+    'missing-gallery-id': '갤러리 id를 찾지 못했습니다.'
+  };
+  return makeError(ERROR_CODES.UNSUPPORTED_PAGE, messages[entry.reason] || '지원하지 않는 디시인사이드 URL입니다.', { reason: entry.reason });
 }
 
 export function detectBlockedPage(html, status = 200) {
@@ -131,20 +136,23 @@ export function detectBlockedPage(html, status = 200) {
 export function detectGalleryContext(html, currentUrl) {
   const doc = parseDocument(html);
   const context = doc ? extractContextFromDoc(doc, html, currentUrl) : extractContextFallback(html, currentUrl);
-  const listPath = supportedListPath(currentUrl);
+  const entry = parseDcinsideEntryUrl(currentUrl, context.galleryId);
   const reasons = [];
 
-  if (!context.galleryId) reasons.push(makeError(ERROR_CODES.UNSUPPORTED_PAGE, '갤러리 id를 찾지 못했습니다.'));
-  if (!listPath) reasons.push(makeError(ERROR_CODES.UNSUPPORTED_PAGE, '지원하지 않는 갤러리 목록 URL입니다.'));
+  if (!entry.ok) reasons.push(entryError(entry));
 
   return {
     ok: reasons.length === 0,
-    galleryId: context.galleryId,
+    galleryId: entry.galleryId || context.galleryId,
     galleryName: context.galleryName,
-    listPath,
+    listPath: entry.listPath,
     currentUrl,
+    sourceUrl: entry.sourceUrl || currentUrl,
+    sourceHost: entry.sourceHost,
+    entryKind: entry.entryKind,
+    canonicalListUrl: entry.canonicalListUrl,
     searchType: context.searchType || 'search_subject_memo',
-    supportsInternalSearch: Boolean(listPath),
+    supportsInternalSearch: entry.ok,
     parserVersion: PARSER_VERSION,
     reasons
   };
@@ -153,14 +161,21 @@ export function detectGalleryContext(html, currentUrl) {
 export function detectSearchContext(html, currentUrl) {
   const doc = parseDocument(html);
   const context = doc ? extractContextFromDoc(doc, html, currentUrl) : extractContextFallback(html, currentUrl);
+  const entry = parseDcinsideEntryUrl(currentUrl, context.galleryId);
   const reasons = [];
-  if (!context.galleryId) reasons.push(makeError(ERROR_CODES.UNSUPPORTED_PAGE, '갤러리 id를 찾지 못했습니다.'));
+  if (!entry.ok) reasons.push(entryError(entry));
   if (!context.keyword) reasons.push(makeError(ERROR_CODES.KEYWORD_NOT_FOUND, '검색어를 찾지 못했습니다.'));
   if (!context.searchType) reasons.push(makeError(ERROR_CODES.UNSUPPORTED_PAGE, '검색 타입을 찾지 못했습니다.'));
   const next = findNextSearchRangeUrl(html, currentUrl);
   return {
     ok: reasons.length === 0,
     ...context,
+    galleryId: entry.galleryId || context.galleryId,
+    sourceUrl: entry.sourceUrl || currentUrl,
+    sourceHost: entry.sourceHost,
+    entryKind: entry.entryKind,
+    listPath: entry.listPath,
+    canonicalListUrl: entry.canonicalListUrl,
     hasNextSearchRange: next.status === 'ok',
     nextSearchRangeUrl: next.url,
     nextCandidates: next.candidates,
@@ -281,8 +296,11 @@ function scoreNextCandidate(anchor, currentUrl, context) {
   if (!href || href.startsWith('javascript:')) return null;
   const url = absolutize(href, currentUrl);
   if (!url) return null;
+  const nextEntry = parseDcinsideEntryUrl(url);
+  if (!nextEntry.ok || nextEntry.sourceHost !== 'gall.dcinside.com' || !nextEntry.entryKind.endsWith('-list')) return null;
   const current = new URL(currentUrl);
   const next = new URL(url);
+  if (nextEntry.galleryId !== (context.galleryId || queryParam(currentUrl, 'id'))) return null;
   let score = 0;
   if (anchor.className.split(/\s+/).includes('search_next')) {
     score += 4;
