@@ -13,10 +13,11 @@ export function parseKeywordInput(input = '', fallbackKeyword = '') {
 }
 
 export function buildSearchUrl(context, keyword) {
-  const currentUrl = new URL(context.currentUrl);
-  const nextUrl = new URL(currentUrl.pathname, currentUrl.origin);
-  const galleryId = context.galleryId || currentUrl.searchParams.get('id') || '';
-  const searchType = context.searchType || currentUrl.searchParams.get('s_type') || 'search_subject_memo';
+  const canonicalListUrl = context.canonicalListUrl || toCanonicalGalleryListUrl(context.currentUrl, context.galleryId);
+  if (!canonicalListUrl) return '';
+  const nextUrl = new URL(canonicalListUrl);
+  const galleryId = context.galleryId || nextUrl.searchParams.get('id') || '';
+  const searchType = context.searchType || nextUrl.searchParams.get('s_type') || 'search_subject_memo';
 
   nextUrl.searchParams.set('id', galleryId);
   nextUrl.searchParams.set('page', '1');
@@ -27,9 +28,9 @@ export function buildSearchUrl(context, keyword) {
 }
 
 export function buildSearchRequests(context, keywordInput = '') {
-  if (!context?.currentUrl) return [];
-  return parseKeywordInput(keywordInput, context.keyword).map((keyword) => ({
-    keyword,
-    url: buildSearchUrl(context, keyword)
-  }));
+  if (!context?.currentUrl && !context?.canonicalListUrl) return [];
+  return parseKeywordInput(keywordInput, context.keyword)
+    .map((keyword) => ({ keyword, url: buildSearchUrl(context, keyword) }))
+    .filter((request) => request.url);
 }
+import { toCanonicalGalleryListUrl } from './dcinsideUrls.js';

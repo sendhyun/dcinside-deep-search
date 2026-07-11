@@ -3,19 +3,17 @@ import { MESSAGES } from './src/messaging.js';
 import { clearAllLocalData, getOptions, saveContext, saveDiagnostics, saveResults } from './src/storage.js';
 import { ERROR_CODES, STATUS, makeError } from './src/errors.js';
 import { displayResults, mergeResults } from './src/resultAggregation.js';
+import { configureSidePanel, openMainUi } from './src/browserUi.js';
+import { CANONICAL_ORIGIN, isCanonicalGalleryListUrl, parseDcinsideEntryUrl } from './src/dcinsideUrls.js';
 
 let currentRun = null;
 
 chrome.runtime.onInstalled.addListener(() => {
-  if (chrome.sidePanel?.setPanelBehavior) {
-    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  }
+  configureSidePanel(chrome);
 });
 
 chrome.action.onClicked?.addListener(async (tab) => {
-  if (chrome.sidePanel?.open && tab?.windowId) {
-    await chrome.sidePanel.open({ windowId: tab.windowId });
-  }
+  await openMainUi(chrome, tab).catch(() => {});
 });
 
 async function getActiveTab() {
@@ -29,6 +27,29 @@ async function askContent(tabId, message) {
   } catch (error) {
     return { ok: false, error: error.message };
   }
+}
+
+function unsupportedPageResult(url) {
+  const entry = parseDcinsideEntryUrl(url || '');
+  const messages = {
+    'unsupported-host': '지원하지 않는 디시인사이드 호스트입니다.',
+    'unsupported-path': '지원하지 않는 갤러리 경로입니다.',
+    'missing-gallery-id': '갤러리 id를 찾지 못했습니다.'
+  };
+  return {
+    ok: false,
+    error: makeError(ERROR_CODES.UNSUPPORTED_PAGE, messages[entry.reason] || '지원 가능한 디시인사이드 갤러리 페이지가 아닙니다.', { reason: entry.reason })
+  };
+}
+
+function supportedTab(tab) {
+  if (!tab?.id) return { ok: false, result: { ok: false, error: makeError(ERROR_CODES.UNSUPPORTED_PAGE, '활성 탭을 찾지 못했습니다.') } };
+  const entry = parseDcinsideEntryUrl(tab.url || '');
+  return entry.ok ? { ok: true, entry } : { ok: false, result: unsupportedPageResult(tab.url) };
+}
+
+function validCrawlUrl(url, galleryId = '') {
+  return isCanonicalGalleryListUrl(url, galleryId) && new URL(url).origin === CANONICAL_ORIGIN;
 }
 
 function broadcast(message) {
@@ -66,7 +87,8 @@ function mergedProgress(resultMap, progress, keyword, searchIndex, totalSearches
 
 async function runDiscovery() {
   const tab = await getActiveTab();
-  if (!tab?.id) return { ok: false, error: '활성 탭을 찾지 못했습니다.' };
+  const active = supportedTab(tab);
+  if (!active.ok) return active.result;
   const result = await askContent(tab.id, { type: MESSAGES.RUN_DISCOVERY });
   if (result?.ok) {
     await saveContext(result.discovery.context);
@@ -76,15 +98,26 @@ async function runDiscovery() {
 }
 
 async function startCrawl(payload) {
+  const requestedSearches = Array.isArray(payload.searchRequests) && payload.searchRequests.length > 0
+    ? payload.searchRequests
+    : [{ url: payload.startUrl, keyword: payload.context?.keyword || '' }];
+  const invalidRequest = requestedSearches.find((request) => !validCrawlUrl(request.url, payload.context?.galleryId));
+  if (invalidRequest) {
+    return {
+      status: STATUS.ERROR,
+      results: [],
+      resultCount: 0,
+      diagnostics: [],
+      error: makeError(ERROR_CODES.UNSUPPORTED_PAGE, '수집 URL은 gall.dcinside.com의 갤러리 목록 URL이어야 합니다.', { url: invalidRequest.url })
+    };
+  }
   if (currentRun) {
     currentRun.abortController.abort();
   }
   const abortController = new AbortController();
   currentRun = { abortController };
   const options = { ...(await getOptions()), ...(payload.options || {}) };
-  const searchRequests = Array.isArray(payload.searchRequests) && payload.searchRequests.length > 0
-    ? payload.searchRequests
-    : [{ url: payload.startUrl, keyword: payload.context?.keyword || '' }];
+  const searchRequests = requestedSearches;
   const resultMap = new Map();
   const visitedUrls = new Set();
   const diagnostics = [];
@@ -94,8 +127,12 @@ async function startCrawl(payload) {
     if (isCurrentRunAborted(abortController)) break;
 
     const currentSearchIndex = searchRequests.indexOf(searchRequest) + 1;
+    const galleryId = parseDcinsideEntryUrl(searchRequest.url).galleryId;
     const crawler = createCrawler({
       fetchHtml: async (url, signal) => {
+        if (!validCrawlUrl(url, galleryId)) {
+          throw new Error('허용되지 않은 다음 검색 URL입니다.');
+        }
         const response = await fetch(url, {
           credentials: 'include',
           signal,
@@ -201,7 +238,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (message?.type === MESSAGES.GET_CONTEXT) {
       const tab = await getActiveTab();
-      const result = tab?.id ? await askContent(tab.id, { type: MESSAGES.GET_CONTEXT }) : { ok: false, error: '활성 탭 없음' };
+      const active = supportedTab(tab);
+      const result = active.ok ? await askContent(tab.id, { type: MESSAGES.GET_CONTEXT }) : active.result;
       sendResponse(result);
       return;
     }

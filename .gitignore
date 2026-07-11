@@ -6,7 +6,4 @@ node_modules/
 .env.*
 .superloopy/
 deploy/
-tests/
-tools/
-docs/
 package-lock.json

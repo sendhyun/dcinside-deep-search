@@ -33,6 +33,17 @@ const elements = {
   visibleCount: document.querySelector('#visibleCount')
 };
 
+function contextUrlLabel(context) {
+  if (!context?.sourceUrl || !context?.canonicalListUrl || context.sourceUrl === context.canonicalListUrl) {
+    return context?.currentUrl || 'unknown';
+  }
+  return `${context.sourceUrl}\n→ 수집: ${context.canonicalListUrl}`;
+}
+
+function messageForError(error, fallback) {
+  return typeof error === 'string' ? error : error?.message || fallback;
+}
+
 const state = {
   context: null,
   galleryContext: null,
@@ -80,7 +91,7 @@ function renderContext(context) {
   elements.galleryValue.textContent = context?.galleryName || context?.galleryId || 'unknown';
   elements.keywordValue.textContent = context?.keyword || 'unknown';
   elements.searchTypeValue.textContent = context?.searchType || 'unknown';
-  elements.startUrlValue.textContent = context?.currentUrl || 'unknown';
+  elements.startUrlValue.textContent = contextUrlLabel(context);
   elements.siteStatus.textContent = context?.ok ? '지원 가능한 검색 결과 페이지로 인식했습니다.' : '검색 결과 페이지로 인식하지 못했습니다.';
   if (!state.keywordTouched && context?.keyword) {
     elements.keywordInput.value = context.keyword;
@@ -93,8 +104,12 @@ function renderGalleryContext(galleryContext) {
   elements.galleryValue.textContent = galleryContext?.galleryName || galleryContext?.galleryId || 'unknown';
   elements.keywordValue.textContent = '입력 필요';
   elements.searchTypeValue.textContent = galleryContext?.searchType || 'unknown';
-  elements.startUrlValue.textContent = galleryContext?.currentUrl || 'unknown';
-  elements.siteStatus.textContent = galleryContext?.ok ? '지원 가능한 갤러리 목록 페이지로 인식했습니다.' : '지원 가능한 디시인사이드 갤러리 페이지가 아닙니다.';
+  elements.startUrlValue.textContent = contextUrlLabel(galleryContext);
+  elements.siteStatus.textContent = galleryContext?.ok
+    ? galleryContext.sourceUrl === galleryContext.canonicalListUrl
+      ? '지원 가능한 갤러리 목록 페이지로 인식했습니다.'
+      : '현재 페이지를 갤러리 목록 URL로 변환해 수집합니다.'
+    : '지원 가능한 디시인사이드 갤러리 페이지가 아닙니다.';
 }
 
 function shouldIgnoreProgress(progress = {}) {
@@ -164,7 +179,7 @@ function renderDiagnostics(diagnostics) {
 async function runDiagnosis() {
   const result = await send({ type: MESSAGES.RUN_DISCOVERY });
   if (!result?.ok) {
-    elements.siteStatus.textContent = result?.error || '진단 실패';
+    elements.siteStatus.textContent = messageForError(result?.error, '진단 실패');
     renderDiagnostics(result);
     return null;
   }
@@ -183,7 +198,7 @@ async function startCrawl() {
   const context = discovery?.context;
   const galleryContext = discovery?.galleryContext;
   const crawlContext = context?.ok ? context : galleryContext;
-  const startUrl = crawlContext?.currentUrl;
+  const startUrl = crawlContext?.canonicalListUrl;
   if (!startUrl || !crawlContext?.ok) {
     setStatus('error', '지원 가능한 디시인사이드 갤러리 페이지가 아닙니다.');
     elements.siteStatus.textContent = galleryContext?.supportsInternalSearch === false
